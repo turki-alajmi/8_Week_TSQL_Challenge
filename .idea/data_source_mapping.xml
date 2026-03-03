@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_1_Dannys_Diner/01_Dannys_Diner_Solutions.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_1_Dannys_Diner/02_Bonus_Questions.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_2_Pizza_Runner/00_DataClean_DDL.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_2_Pizza_Runner/01_A_Pizza_Metrics.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_2_Pizza_Runner/02_B_Runner_Experience.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+    <file url="file://$PROJECT_DIR$/8_Week_Challenge/Case_Study_2_Pizza_Runner/03_C_Ingredient_Optimisation.sql" value="1bfbb459-2db2-4dab-9416-a92666a55fe5" />
+  </component>
+</project>
