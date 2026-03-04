@@ -1,5 +1,7 @@
 # 🍜 Case Study #1: Danny's Diner 
 
+> 🔗 **Check out the original challenge prompt and dataset here:** [Case Study #1: Danny's Diner](https://8weeksqlchallenge.com/case-study-1/)
+
 ## 📋 Table of Contents
 - [The Business Problem](#-the-business-problem)
 - [Tech Stack Used](#-tech-stack-used)
@@ -11,8 +13,9 @@
 ## 🏢 The Business Problem
 **Danny's Diner** has accumulated transactional data across sales, menu items, and loyalty memberships — but no analytical layer exists to extract value from it. Customer behavior, spending patterns, and menu performance are currently invisible to the business.
 
-**The Goal:** 
+**The Goal:**
 Query the raw operational data to surface customer purchasing patterns, identify high-value customers, and evaluate menu item performance. The findings will directly support a decision on whether to expand the existing loyalty program.
+
 ---
 
 ## 🛠️ Tech Stack Used
