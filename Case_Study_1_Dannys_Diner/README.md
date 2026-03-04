@@ -13,6 +13,7 @@
 
 **The Goal:** 
 Query the raw operational data to surface customer purchasing patterns, identify high-value customers, and evaluate menu item performance. The findings will directly support a decision on whether to expand the existing loyalty program.
+
 ---
 
 ## 🛠️ Tech Stack Used
