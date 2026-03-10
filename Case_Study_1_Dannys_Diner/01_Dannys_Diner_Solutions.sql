@@ -54,7 +54,8 @@ WHERE first_product = 1;
 --    was it purchased by all customers?
 ------------------------------------------------------------------------
 
-SELECT -- TOP 1 (alternative approach, works on SQL Server 2012+)
+-- Using OFFSET/FETCH instead of TOP 1 for ANSI SQL compliance
+SELECT
     product_name,
     COUNT(sales.product_id) AS purchase_count
 FROM sales

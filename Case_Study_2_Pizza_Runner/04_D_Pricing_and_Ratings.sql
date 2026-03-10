@@ -1,3 +1,10 @@
+/* ---------------------------------------------------------------------------
+-- Case Study #2: Pizza Runner
+-- Section D: Pricing and Ratings
+-- Author: Turki Alajmi
+-- Date: March 2026
+-- Tool used: Microsoft SQL Server (T-SQL)
+--------------------------------------------------------------------------- */
 ------------------------------------------------------------------------
 -- Q01: If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and
 --      there were no charges for changes — how much money has Pizza
@@ -59,8 +66,8 @@ CREATE TABLE ratings
 )
 GO
 INSERT INTO pizza_runner.dbo.ratings (order_id, runner_id, customer_id, rating, rating_time)
-VALUES (1, 1, 101, 2, '2021-01-01 23:15:33.000'),
-    (2, 1, 101, 4, N'2021-01-01 22:7:54.000'),
+VALUES (1, 1, 101, 2, N'2021-01-01 23:15:33.000'),
+    (2, 1, 101, 4, N'2021-01-01 22:07:54.000'),
     (3, 1, 102, 5, N'2021-01-03 00:12:37.000'),
     (4, 2, 103, 3, N'2021-01-04 13:53:03.000'),
     (5, 3, 104, 1, N'2021-01-09 21:10:57.000'),

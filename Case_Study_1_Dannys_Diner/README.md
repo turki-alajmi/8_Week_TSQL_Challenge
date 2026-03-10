@@ -113,7 +113,7 @@ WHERE last_purchase = 1;
 | A | curry |
 | B | sushi |
 ---
-### Q10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushI how many points do customer A and B have at the end of January
+### Q10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi how many points do customer A and B have at the end of January
 
 
 **Logic:** Assuming points accumulate normally before membership, a SUM(CASE WHEN) handles three scenarios in priority order: the first week 2x multiplier on all items, the permanent sushi 2x multiplier, and the base rate. Order is deliberate — sushi ordered in the first week hits the first week rule first, not the sushi rule.

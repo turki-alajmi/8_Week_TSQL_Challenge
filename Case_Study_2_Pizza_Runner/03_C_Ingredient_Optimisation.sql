@@ -1,3 +1,10 @@
+/* ---------------------------------------------------------------------------
+-- Case Study #2: Pizza Runner
+-- Section C: Ingredient optimization
+-- Author: Turki Alajmi
+-- Date: March 2026
+-- Tool used: Microsoft SQL Server (T-SQL)
+--------------------------------------------------------------------------- */
 ------------------------------------------------------------------------
 -- Q01: What are the standard ingredients for each pizza?
 ------------------------------------------------------------------------
@@ -5,7 +12,7 @@
 WITH cte AS (
     SELECT
         n.pizza_name,
-        try_CAST(TRIM(value) AS INT) AS ingredient
+        TRY_CAST(TRIM(value) AS INT) AS ingredient
     FROM pizza_recipes AS r
     CROSS APPLY STRING_SPLIT(toppings, ',')
     INNER JOIN pizza_names AS n
@@ -26,7 +33,7 @@ WITH cte AS (
     SELECT
         c.order_id,
         c.extras,
-        try_CAST(trim(value) AS INT) as ingredient
+        TRY_CAST(TRIM(value) AS INT) AS ingredient
     FROM customer_orders_clean AS c
     INNER JOIN runner_orders_clean AS r
         ON r.order_id = c.order_id
@@ -38,12 +45,14 @@ WITH cte AS (
 )
 SELECT TOP 1 WITH TIES
     topping_name,
-    count(topping_name) AS count_of_topping
-from cte
+    COUNT(topping_name) AS count_of_topping
+FROM cte
 INNER JOIN pizza_toppings
-on pizza_toppings.topping_id = cte.ingredient
-GROUP BY topping_name
-ORDER BY count_of_topping DESC;
+    ON pizza_toppings.topping_id = cte.ingredient
+GROUP BY
+    topping_name
+ORDER BY
+    count_of_topping DESC;
 
 ------------------------------------------------------------------------
 -- Q03: What was the most common exclusion?
@@ -53,7 +62,7 @@ WITH cte AS (
     SELECT
         c.order_id,
         c.exclusions,
-        try_CAST(trim(value) AS INT) as ingredient
+        TRY_CAST(TRIM(value) AS INT) AS ingredient
 
     FROM customer_orders_clean AS c
     INNER JOIN runner_orders_clean AS r
@@ -66,12 +75,14 @@ WITH cte AS (
 )
 SELECT TOP 1 WITH TIES
     topping_name,
-    count(topping_name) AS count_of_topping
-from cte
+    COUNT(topping_name) AS count_of_topping
+FROM cte
 INNER JOIN pizza_toppings
-on pizza_toppings.topping_id = cte.ingredient
-GROUP BY topping_name
-ORDER BY count_of_topping DESC;
+    ON pizza_toppings.topping_id = cte.ingredient
+GROUP BY
+    topping_name
+ORDER BY
+    count_of_topping DESC;
 
 ------------------------------------------------------------------------
 -- Q04: Generate an order item for each record in the customers_orders
@@ -104,7 +115,7 @@ WITH uni AS (
         FROM uni AS c
         OUTER APPLY STRING_SPLIT(extras, ',')
         LEFT JOIN pizza_toppings AS t
-            ON t.topping_id = TRY_CAST(trim(value) as INT)
+            ON t.topping_id = TRY_CAST(TRIM(value) AS INT)
         GROUP BY
             uni_key
 
@@ -117,7 +128,7 @@ WITH uni AS (
         FROM uni AS c
         OUTER APPLY STRING_SPLIT(c.exclusions, ',')
         LEFT JOIN pizza_toppings AS t
-            ON t.topping_id = TRY_CAST(trim(value) as INT)
+            ON t.topping_id = TRY_CAST(TRIM(value) AS INT)
         GROUP BY
             uni_key
 
@@ -129,11 +140,11 @@ SELECT
         WHEN true_extras IS NULL AND true_exclusion IS NULL
             THEN pizza_name
         WHEN true_extras IS NOT NULL AND true_exclusion IS NULL
-            THEN CONCAT(pizza_name,' - Extra ',true_extras)
-        WHEN true_extras IS  NULL AND true_exclusion IS NOT NULL
-            THEN CONCAT(pizza_name,' - Exclude ',true_exclusion)
-        Else CONCAT(pizza_name,' - Exclude ',true_exclusion,' - Extra ',true_extras)
-    end AS receipt
+            THEN CONCAT(pizza_name, ' - Extra ', true_extras)
+        WHEN true_extras IS NULL AND true_exclusion IS NOT NULL
+            THEN CONCAT(pizza_name, ' - Exclude ', true_exclusion)
+        ELSE CONCAT(pizza_name, ' - Exclude ', true_exclusion, ' - Extra ', true_extras)
+        END AS receipt
 FROM uni
 INNER JOIN extra_split AS plus
     ON uni.uni_key = plus.uni_key
@@ -211,7 +222,7 @@ WITH surg_key AS (
                 excluded_ing
             FROM exclude_cte
             WHERE surg_key.rownum = exclude_cte.rownum
-              AND excluded_ing IS NOT NULL
+              AND excluded_ing IS NOT NULL -- NULL guard prevents silent data loss
         )
 
         UNION ALL

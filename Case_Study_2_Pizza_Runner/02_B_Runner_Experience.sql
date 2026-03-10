@@ -1,3 +1,10 @@
+/* ---------------------------------------------------------------------------
+-- Case Study #2: Pizza Runner
+-- Section B: Runner Experience
+-- Author: Turki Alajmi
+-- Date: March 2026
+-- Tool used: Microsoft SQL Server (T-SQL)
+--------------------------------------------------------------------------- */
 ------------------------------------------------------------------------
 --Q01 How many runners signed up for each 1-week period?
 --    (i.e. week starts 2021-01-01)
