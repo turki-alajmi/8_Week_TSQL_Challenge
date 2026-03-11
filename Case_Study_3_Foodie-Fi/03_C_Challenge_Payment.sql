@@ -1,3 +1,11 @@
+/* ---------------------------------------------------------------------------
+-- Case Study #3: Foodie-Fi
+-- Section C: Challenge Payment Question
+-- Author: Turki Alajmi
+-- Date: March 2026
+-- Tool used: Microsoft SQL Server (T-SQL)
+--------------------------------------------------------------------------- */
+
 -- 1. ANCHOR CTE: Retrieve initial active plans in 2020.
 -- Using LEAD() to peek at the next plan's details to calculate exact cutoff dates.
 -- Note: Trials (plan_id = 0) are excluded as they are not billed. Churns (plan_id = 4)
