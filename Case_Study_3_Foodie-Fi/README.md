@@ -13,10 +13,10 @@
 
 ## 🏢 The Business Problem
 
-Danny launched **Foodie-Fi** — a Netflix-style subscription streaming platform for food and cooking content. Every business decision is intended to be data-driven, and the dataset reflects a realistic SaaS subscription model with trials, plan upgrades, downgrades, and churn events.
+Danny launched **Foodie-Fi** — a Netflix-style subscription streaming platform for food and cooking content. The dataset models a SaaS subscription lifecycle: trials, plan upgrades, downgrades, and churn events.
 
 **The Goal:**
-Analyze subscription behavior across 1,000 customers to surface conversion rates, churn patterns, and revenue trends. The centerpiece challenge was **Section C** — constructing a fully materialized `payments` table from scratch by generating recurring monthly billing rows that don't exist in the source data, handling plan changes, prorated upgrade charges, and billing cutoffs entirely in T-SQL.
+Analyze subscription behavior across 1,000 customers to surface conversion rates, churn patterns, and revenue trends. The hardest section was **Section C** — constructing a fully materialized `payments` table from scratch by generating recurring monthly billing rows that don't exist in the source data, handling plan changes, prorated upgrade charges, and billing cutoffs entirely in T-SQL.
 
 ---
 

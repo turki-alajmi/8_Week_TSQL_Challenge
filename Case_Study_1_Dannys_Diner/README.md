@@ -4,23 +4,24 @@
 
 ## 📋 Table of Contents
 - [The Business Problem](#-the-business-problem)
-- [Tech Stack Used](#%EF%B8%8F-tech-stack-used)
+- [Tech Stack & Skills Applied](#%EF%B8%8F-tech-stack--skills-applied)
 - [Entity Relationship Diagram](#%EF%B8%8F-entity-relationship-diagram)
-- [Highlight Queries & Business Insights](#-highlight-queries--business-insights)
+- [Highlight Queries & Engineering Logic](#-highlight-queries--engineering-logic)
+- [What I Would Do Differently in Production](#%EF%B8%8F-what-i-would-do-differently-in-production)
 
 ---
 
 ## 🏢 The Business Problem
-**Danny's Diner** has accumulated transactional data across sales, menu items, and loyalty memberships — but no analytical layer exists to extract value from it. Customer behavior, spending patterns, and menu performance are currently invisible to the business.
+**Danny's Diner** has accumulated transactional data across sales, menu items, and loyalty memberships — but no analytical layer exists on top of it.
 
 **The Goal:**
-Query the raw operational data to surface customer purchasing patterns, identify high-value customers, and evaluate menu item performance. The findings will directly support a decision on whether to expand the existing loyalty program.
+Query the raw operational data to surface customer purchasing patterns, identify high-value customers, and evaluate menu item performance. The findings will inform whether to expand the existing loyalty program.
 
 ---
 
-## 🛠️ Tech Stack Used
+## 🛠️ Tech Stack & Skills Applied
 - **Database Engine:** SQL Server (T-SQL)
-- **Core Concepts:** Common Table Expressions (CTEs), Window Functions (`DENSE_RANK`,`RANK`), Aggregations (`SUM`, `COUNT`), And `CASE WHEN` statements.
+- **Core Concepts:** Common Table Expressions (CTEs), Window Functions (`DENSE_RANK`, `RANK`), Aggregations (`SUM`, `COUNT`), `CASE WHEN` with priority ordering, Inequality Joins
 
 ---
 
@@ -30,13 +31,13 @@ Query the raw operational data to surface customer purchasing patterns, identify
 
 ---
 
-## 💡 Highlight Queries & Business Insights
+## 💡 Highlight Queries & Engineering Logic
 *Note: The complete SQL script containing all 10 questions can be found in the [01_Dannys_Diner_Solutions.sql](01_Dannys_Diner_Solutions.sql) file in this repository.*
 
 ### Q5. Which item was the most popular for each customer?
 
 
-**Logic:** RANK() was chosen over ROW_NUMBER() to correctly handle ties — as seen with Customer B who ordered all three items equally
+**Logic:** RANK() was chosen over ROW_NUMBER() to correctly handle ties — as seen with Customer B who ordered all three items equally.
 
 ```sql
 WITH cte AS (
@@ -79,7 +80,7 @@ ORDER BY
 ### Q7. Which item was purchased just before the customer became a member?
 
 
-**Logic:** A strict inequality join (`order_date < join_date`) was used to ensure we only analyze purchases made *before* the exact day they signed up. `RANK()` was then applied to capture every item, just in case the customer placed a multi-item order on their final visit.
+**Logic:** A strict inequality join (`order_date < join_date`) ensures only purchases made *before* the exact signup day are included. `RANK()` captures every item in case the customer placed a multi-item order on their final pre-membership visit.
 
 ```sql
 WITH cte AS (
@@ -116,7 +117,7 @@ WHERE last_purchase = 1;
 ### Q10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi how many points do customer A and B have at the end of January
 
 
-**Logic:** Assuming points accumulate normally before membership, a SUM(CASE WHEN) handles three scenarios in priority order: the first week 2x multiplier on all items, the permanent sushi 2x multiplier, and the base rate. Order is deliberate — sushi ordered in the first week hits the first week rule first, not the sushi rule.
+**Logic:** A `SUM(CASE WHEN)` handles three scenarios in priority order: the first-week 2x multiplier on all items, the permanent sushi 2x multiplier, and the base rate. Order is deliberate — sushi ordered in the first week hits the first-week rule first, not the sushi rule.
 
 ```sql
 SELECT
@@ -142,8 +143,14 @@ GROUP BY
 | :--- | :--- |
 | A | 1370 |
 | B | 820 |
+
 ---
 
+## ⚙️ What I Would Do Differently in Production
+
+- The source tables have no primary keys or foreign keys defined — in production, `sales.product_id` would have a FK to `menu`, `sales.customer_id` would have a FK to a customers table, and `members.customer_id` would reference the same
+- Danny's Diner is a single-script case with no data cleaning needed — in a real scenario, even clean-looking data would go through a validation step before being queried
+
+---
 
 [👉 Click here to view the complete SQL script with all 10 solutions](01_Dannys_Diner_Solutions.sql)
-

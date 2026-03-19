@@ -1,11 +1,12 @@
-# 🦞 Case Study #6: Clique Bait
+# 🛒 Case Study #5: Data Mart
 
-> 🔗 **Check out the original challenge prompt and dataset here:** [Case Study #6: Clique Bait](https://8weeksqlchallenge.com/case-study-6/)
+> 🔗 **Check out the original challenge prompt and dataset here:** [Case Study #5: Data Mart](https://8weeksqlchallenge.com/case-study-5/)
 
 ## 📋 Table of Contents
 - [The Business Problem](#-the-business-problem)
 - [Tech Stack & Skills Applied](#%EF%B8%8F-tech-stack--skills-applied)
 - [Entity Relationship Diagram](#%EF%B8%8F-entity-relationship-diagram)
+- [Data Cleansing & Issues Found](#-data-cleansing--issues-found)
 - [Highlight Queries & Engineering Logic](#-highlight-queries--engineering-logic)
 - [What I Would Do Differently in Production](#%EF%B8%8F-what-i-would-do-differently-in-production)
 
@@ -13,10 +14,10 @@
 
 ## 🏢 The Business Problem
 
-**Clique Bait** is an online seafood store. The business captures every user interaction — page views, cart adds, ad impressions, clicks, and purchases — as raw clickstream events.
+Danny runs **Data Mart** — an international online supermarket that specialises in fresh produce. In June 2020, the business introduced sustainable packaging across all products. The business needed to know: **did the change hurt sales, and if so, where?**
 
 **The Goal:**
-Build a funnel analytics layer from raw clickstream data. This meant constructing product-level and category-level funnel tables to quantify view-to-cart-to-purchase conversion, materializing a visit-level campaign summary table that maps every session to its marketing context, and deriving campaign performance insights from the materialized data.
+The source data arrived as a single pre-aggregated table with dates stored as `VARCHAR` in a non-standard format and no analytical dimensions derived. Before any analysis could run, the raw table required a full cleansing pipeline to parse dates, derive week numbers, map segment codes to readable labels, and materialize a clean table. From there, the objective was to quantify the before/after sales impact of the packaging change across time periods, regions, platforms, demographics, and customer types.
 
 ---
 
@@ -24,265 +25,230 @@ Build a funnel analytics layer from raw clickstream data. This meant constructin
 
 - **Database Engine:** SQL Server (T-SQL)
 - **Data Engineering Skills Applied:**
-  - **Funnel Construction:** `EXISTS` correlated subqueries for purchase attribution, `COUNT(DISTINCT CASE WHEN)` for visit-level funnel metrics
-  - **Table Materialization:** `SELECT INTO` for product funnel, category funnel, and campaign summary tables
-  - **Visit-Level Aggregation:** Collapsing event-level rows to one-row-per-visit grain with conditional `SUM`/`MAX`
-  - **String Denormalization:** `STRING_AGG` with `WITHIN GROUP (ORDER BY)` for ordered cart product lists
-  - **Campaign Attribution:** `LEFT JOIN` with `BETWEEN` on date ranges to map visits to campaigns
-  - **Ambiguous Metric Resolution:** Dual-denominator checkout abandonment analysis with `EXISTS`/`NOT EXISTS` and `CROSS JOIN` scalar aggregation
+  - **Data Cleansing:** `CONVERT` with style codes, `CASE WHEN` segment mapping, `SELECT INTO`
+  - **Date Engineering:** VARCHAR date parsing, week number derivation via integer division bucketing
+  - **Before/After Impact Analysis:** `DATEADD` boundary windows, `CROSS JOIN` scalar aggregation
+  - **Multi-Dimension Aggregation:** `GROUPING SETS`, `GROUPING()` for NULL disambiguation
+  - **Overflow Handling:** `BIGINT` casting on large sales aggregations
 
 ---
 
 ## 🗄️ Entity Relationship Diagram
 
-![Case6_ERD.png](Case6_ERD.png)
+![Case5_ERD.png](Case5_ERD.png)
 
-> Interactive version: [View on dbdiagram.io](https://dbdiagram.io/d/Clique-Bait-69b87ea878c6c4bc7afa3d82)
+---
+
+## 🧹 Data Cleansing & Issues Found
+
+*Full cleansing script: [01_A_Data_Cleansing_Steps.sql](01_A_Data_Cleansing_Steps.sql)*
+
+All cleansing and dimension derivation was performed in a single query using a CTE, then materialized into `data_mart.clean_weekly_sales` via `SELECT INTO`.
+
+| Column | Issue Found | Fix Applied |
+| :--- | :--- | :--- |
+| `week_date` | Stored as `VARCHAR(7)` in `dd/mm/yy` format | `CONVERT(DATE, week_date, 3)` — style code 3 handles the non-standard format |
+| `week_date` | No `week_number` column existed | `((DATEPART(DAYOFYEAR, week_date) - 1) / 7) + 1` — integer division buckets days into 7-day periods from Jan 1 |
+| `segment` | Literal `'null'` string instead of `NULL` | `CASE WHEN segment = 'null' THEN 'unknown'` |
+| `segment` | No `age_band` or `demographic` columns existed | `LEFT(segment, 1)` extracts demographic letter; `RIGHT(segment, 1)` extracts age number — both mapped via `CASE WHEN` |
+| `sales` | Stored as `INT` — overflows on `SUM` across 17k rows | `CAST(sales AS BIGINT)` before every aggregation |
 
 ---
 
 ## 💡 Highlight Queries & Engineering Logic
 
-### Highlight 1 — Funnel Table Construction with EXISTS-Based Purchase Attribution
-**Question:** *Section C — Create a product-level funnel table showing views, cart adds, purchases, and abandoned count per product.*
-*Full script: [03_C_Product_Funnel_Analysis.sql](03_C_Product_Funnel_Analysis.sql)*
+### Highlight 1 — Set Subtraction: Finding Missing Week Numbers with Recursive CTE + EXCEPT
+**Question:** *Section B, Q2 — What range of week numbers are missing from the dataset?*
+*Full script: [02_B_Data_Exploration.sql](02_B_Data_Exploration.sql)*
 
-**The Problem:** The events table stores atomic actions — one row per click. There is no "purchased product" event; a purchase event (event_type 3) fires once per visit on the Confirmation page, not per product. A product counts as purchased only if it was added to cart *and* the visit ended with a purchase event. Abandoned products are the inverse — carted but the visit had no purchase.
+**The Problem:** The dataset only covers a trading window within each year — not the full 52 weeks. To find the missing week numbers, a complete reference set of all possible weeks is needed to compare against. That reference doesn't exist in the data — it has to be generated.
 
-**The Solution:** A `purchased_cte` isolates cart-add rows whose `visit_id` also has a purchase event via `EXISTS`. The main `product_funnel` CTE then `LEFT JOIN`s this result back — `COUNT(DISTINCT CASE WHEN ... AND pr.page_name IS NOT NULL)` counts purchased products, while `added_to_cart - purchased_product` derives abandonment without a second scan. The `WHERE product_id IS NOT NULL` filter excludes navigation pages (Home, Checkout, Confirmation) from the funnel.
-
+**The Solution:** A recursive CTE generates integers 1 through 52 as the complete reference set. `EXCEPT` subtracts the week numbers that exist in the dataset, leaving only the gaps. This is the standard T-SQL approach for generating a number sequence when a tally table isn't available — `GENERATE_SERIES(1, 52)` achieves the same result on SQL Server 2022+.
 ```sql
-WITH main_data AS (
+-- Recursive CTE : generate rows numbered from 1 to 52, acts as weeks in a year
+-- Note: GENERATE_SERIES(1, 52) can replace this CTE on SQL Server 2022+
+WITH all_possible_weeks AS (
     SELECT
-        visit_id,
-        sequence_number,
-        page_name,
-        event_name,
-        event_time,
-        e.event_type,
-        h.product_id,
-        product_category
-    FROM clique_bait.events AS e
-    INNER JOIN clique_bait.page_hierarchy AS h
-        ON h.page_id = e.page_id
-    INNER JOIN clique_bait.event_identifier AS i
-        ON i.event_type = e.event_type
-),
-    purchased_cte AS (
-        SELECT
-            a.visit_id,
-            a.page_name
-        FROM main_data AS a
-        WHERE event_type = 2
-          AND EXISTS (
-            SELECT b.visit_id
-            FROM main_data AS b
-            WHERE a.visit_id = b.visit_id
-              AND b.event_type = 3
-        )
-    ),
-    product_funnel AS (
-        SELECT
-            md.page_name,
-            product_category,
-            COUNT(DISTINCT CASE WHEN event_type = 1 THEN md.visit_id END) AS product_views,
-            COUNT(DISTINCT CASE WHEN event_type = 2 THEN md.visit_id END) AS added_to_cart,
-            COUNT(DISTINCT
-                  CASE WHEN event_type = 2 AND pr.page_name IS NOT NULL
-                      THEN md.visit_id END) AS purchased_product
-        FROM main_data AS md
-        LEFT JOIN purchased_cte AS pr
-            ON md.visit_id = pr.visit_id
-            AND md.page_name = pr.page_name
-        WHERE product_id IS NOT NULL
-        GROUP BY
-            product_category,
-            md.page_name
-    )
+        1 AS missing_week_number
+    UNION ALL
+    SELECT
+        missing_week_number + 1
+    FROM all_possible_weeks
+    WHERE missing_week_number < 52
+)
+SELECT
+    missing_week_number
+FROM all_possible_weeks
+
+-- Using EXCEPT to subtract existing week numbers, leaving only the gaps
+EXCEPT
 
 SELECT
-    product_category,
-    page_name,
-    product_views,
-    added_to_cart,
-    purchased_product,
-    added_to_cart - purchased_product AS abandoned_count
-INTO clique_bait.product_funnel
-FROM product_funnel;
-```
-
-#### 📊 Result Set
-
-| product\_category | page\_name | product\_views | added\_to\_cart | purchased\_product | abandoned\_count |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| Shellfish | Abalone | 1525 | 932 | 699 | 233 |
-| Luxury | Black Truffle | 1469 | 924 | 707 | 217 |
-| Shellfish | Crab | 1564 | 949 | 719 | 230 |
-| Fish | Kingfish | 1559 | 920 | 707 | 213 |
-| Shellfish | Lobster | 1547 | 968 | 754 | 214 |
-| Shellfish | Oyster | 1568 | 943 | 726 | 217 |
-| Luxury | Russian Caviar | 1563 | 946 | 697 | 249 |
-| Fish | Salmon | 1559 | 938 | 711 | 227 |
-| Fish | Tuna | 1515 | 931 | 697 | 234 |
-
-
----
-
-### Highlight 2 — Visit-Level Campaign Summary Table
-**Question:** *Section D — Build a campaign master table with one row per visit containing: user_id, visit metrics, campaign attribution, and a comma-separated list of carted products.*
-*Full script: [04_D_Campaigns_Analysis.sql](04_D_Campaigns_Analysis.sql)*
-
-**The Problem:** The raw events table has multiple rows per visit per event type. The campaign summary needs exactly one row per visit with aggregated metrics (page views, cart adds, purchase flag, impressions, clicks), the visit mapped to a campaign window if applicable, and all carted products collapsed into a single ordered string. Aggregation, campaign matching, and string denormalization all need to land in one output table.
-
-**The Solution:** `main_data` is the base join enriching events with user and event type metadata. From there, two CTEs split the work: `grouped_data` collapses events to one row per visit using conditional `SUM`/`MAX` on event_type flags, and `agged_strings` uses `STRING_AGG` with `WITHIN GROUP (ORDER BY sequence_number)` to build the ordered cart product list. The final `SELECT INTO` joins both CTEs with a `LEFT JOIN` to `campaign_identifier` on `BETWEEN` date logic — preserving visits that fall outside any campaign window.
-
-```sql
-WITH main_data AS (
-    SELECT
-        e.visit_id,
-        e.page_id,
-        e.event_type,
-        ei.event_name,
-        e.sequence_number,
-        e.event_time,
-        u.user_id
-    FROM clique_bait.events AS e
-    INNER JOIN clique_bait.users AS u
-        ON u.cookie_id = e.cookie_id
-    INNER JOIN clique_bait.event_identifier AS ei
-        ON ei.event_type = e.event_type
-),
-    grouped_data AS (
-        SELECT
-            visit_id,
-            user_id,
-            MIN(event_time) AS visit_start_time,
-            SUM(CASE WHEN event_type = 1 THEN 1 ELSE 0 END) AS page_views,
-            SUM(CASE WHEN event_type = 2 THEN 1 ELSE 0 END) AS cart_adds,
-            MAX(CASE WHEN event_type = 3 THEN 1 ELSE 0 END) AS purchase,
-            SUM(CASE WHEN event_type = 4 THEN 1 ELSE 0 END) AS impression,
-            SUM(CASE WHEN event_type = 5 THEN 1 ELSE 0 END) AS click
-        FROM main_data
-        GROUP BY
-            visit_id,
-            user_id
-    ),
-    agged_strings AS (
-        SELECT
-            e.visit_id,
-            STRING_AGG(page_name, ', ')
-                WITHIN GROUP ( ORDER BY sequence_number ASC ) AS cart_products
-        FROM clique_bait.events AS e
-        INNER JOIN clique_bait.page_hierarchy ph
-            ON e.page_id = ph.page_id
-        WHERE event_type = 2
-        GROUP BY e.visit_id
-    )
-
-SELECT
-    gd.user_id,
-    gd.visit_id,
-    gd.visit_start_time,
-    gd.page_views,
-    gd.cart_adds,
-    gd.purchase,
-    ci.campaign_name,
-    gd.impression,
-    gd.click,
-    cart_products
-INTO clique_bait.campaign_summary
-FROM grouped_data AS gd
-LEFT JOIN agged_strings AS ag
-    ON ag.visit_id = gd.visit_id
-LEFT JOIN clique_bait.campaign_identifier AS ci
-    ON gd.visit_start_time BETWEEN ci.start_date AND ci.end_date;
+    week_number
+FROM data_mart.clean_weekly_sales;
 ```
 
 <details>
-<summary><b>📊 Click to expand Result Set (first 10 rows)</b></summary>
+<summary><b>📊 Click to expand Result Set</b></summary>
 
-| user\_id | visit\_id | visit\_start\_time | page\_views | cart\_adds | purchase | campaign\_name | impression | click | cart\_products |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 155 | 001597 | 2020-02-17 00:21:45.2951410 | 10 | 6 | 1 | Half Off - Treat Your Shellf\(ish\) | 1 | 1 | Salmon, Russian Caviar, Black Truffle, Lobster, Crab, Oyster |
-| 243 | 002809 | 2020-03-13 17:49:55.4598700 | 4 | 0 | 0 | Half Off - Treat Your Shellf\(ish\) | 0 | 0 | null |
-| 78 | 0048b2 | 2020-02-10 02:59:51.3354520 | 6 | 4 | 0 | Half Off - Treat Your Shellf\(ish\) | 0 | 0 | Kingfish, Russian Caviar, Abalone, Lobster |
-| 228 | 004aaf | 2020-03-18 13:23:07.9739400 | 6 | 2 | 1 | Half Off - Treat Your Shellf\(ish\) | 0 | 0 | Tuna, Lobster |
-| 237 | 005fe7 | 2020-04-02 18:14:08.2577110 | 9 | 4 | 1 | null | 0 | 0 | Kingfish, Black Truffle, Crab, Oyster |
-| 420 | 006a61 | 2020-01-25 20:54:14.6302530 | 9 | 5 | 1 | 25% Off - Living The Lux Life | 1 | 1 | Tuna, Russian Caviar, Black Truffle, Abalone, Crab |
-| 252 | 006e8c | 2020-02-21 03:14:44.9659380 | 1 | 0 | 0 | Half Off - Treat Your Shellf\(ish\) | 0 | 0 | null |
-| 20 | 006f7f | 2020-02-23 01:36:34.7863580 | 5 | 1 | 1 | Half Off - Treat Your Shellf\(ish\) | 1 | 1 | Tuna |
-| 436 | 007330 | 2020-01-07 22:30:35.7750680 | 11 | 8 | 1 | BOGOF - Fishing For Compliments | 1 | 1 | Salmon, Kingfish, Tuna, Russian Caviar, Black Truffle, Abalone, Lobster, Oyster |
-| 161 | 009e0e | 2020-02-20 06:17:50.9073540 | 8 | 5 | 0 | Half Off - Treat Your Shellf\(ish\) | 0 | 0 | Kingfish, Tuna, Black Truffle, Abalone, Lobster |
 
+| missing\_week\_number |
+| :--- |
+| 1 |
+| 2 |
+| 3 |
+| 4 |
+| 5 |
+| 6 |
+| 7 |
+| 8 |
+| 9 |
+| 10 |
+| 11 |
+| 37 |
+| 38 |
+| 39 |
+| 40 |
+| 41 |
+| 42 |
+| 43 |
+| 44 |
+| 45 |
+| 46 |
+| 47 |
+| 48 |
+| 49 |
+| 50 |
+| 51 |
+| 52 |
 
 </details>
 
 ---
 
-### Highlight 3 — Dual-Interpretation Checkout Abandonment
-**Question:** *Section B, Q06 — What is the percentage of visits which view the checkout page but do not have a purchase event?*
-*Full script: [02_B_Digital_Analysis.sql](02_B_Digital_Analysis.sql)*
+### Highlight 2 — Before/After Impact Analysis with `DATEADD` Boundaries
+**Question:** *Section C, Q1 — What is the total sales for the 4 weeks before and after `2020-06-15`? What is the growth or reduction rate in actual values and percentage of sales?*
+*Full script: [03_C_Before_After_Analysis.sql](03_C_Before_After_Analysis.sql)*
 
-**The Problem:** The question is grammatically ambiguous — "percentage of visits" could mean two different things depending on the denominator. Interpretation 1 uses all site visits as the base (consistent with Q5's purchase percentage framework). Interpretation 2 uses only visits that reached checkout as the base (standard e-commerce abandonment rate). Both are valid business metrics that answer different questions, so both are solved.
+**The Problem:** Measuring the sales impact of the packaging change required splitting the dataset into two precise windows around a specific baseline date. Danny's grain explicitly includes `2020-06-15` as the start of the after period — so the boundary logic needed to reflect that exactly.
 
-**The Solution:** `NOT EXISTS` isolates visits that viewed the checkout page (page_id 12) without a corresponding purchase event (event_type 3). A `CROSS JOIN` brings the scalar count onto the events table for inline percentage calculation. The only difference between the two queries is the denominator — `COUNT(DISTINCT visit_id)` for all visits vs. `COUNT(DISTINCT CASE WHEN page_id = 12 THEN visit_id END)` for checkout-only visits.
+**The Solution:** Two CTEs each aggregate one window using `DATEADD` to define the boundaries relative to the baseline date. A `CROSS JOIN` between the two scalar CTEs brings both totals onto one row for inline difference and growth calculation. `CAST(sales AS BIGINT)` is applied before `SUM` to prevent integer overflow on the large aggregations.
 
 ```sql
--- Interpretation 1: Denominator = all site visits
-WITH cte AS (
+WITH before_4_weeks AS (
     SELECT
-        COUNT(DISTINCT visit_id) AS view_checkout_non_purchase
-    FROM clique_bait.events AS e1
-    WHERE event_type = 1
-      AND page_id = 12
-      AND NOT EXISTS(
-        SELECT e2.visit_id
-        FROM clique_bait.events AS e2
-        WHERE e2.visit_id = e1.visit_id
-          AND e2.event_type = 3
+        SUM(CAST(sales AS BIGINT)) AS before_sales
+    FROM data_mart.clean_weekly_sales
+    WHERE week_date < '20200615'
+      AND week_date >= DATEADD(WEEK, -4, '20200615')
+),
+    after_4_weeks AS (
+        SELECT
+            SUM(CAST(sales AS BIGINT)) AS after_sales
+        FROM data_mart.clean_weekly_sales
+        WHERE week_date >= '20200615'
+          AND week_date < DATEADD(WEEK, 4, '20200615')
     )
-)
-SELECT
-    CAST((MAX(view_checkout_non_purchase) * 100.0)
-        / COUNT(DISTINCT visit_id) AS DECIMAL(5, 2)) AS checkout_no_purchase
-FROM clique_bait.events
-CROSS JOIN cte;
 
--- Interpretation 2: Denominator = visits that reached checkout
-WITH cte AS (
-    SELECT
-        COUNT(DISTINCT visit_id) AS view_checkout_non_purchase
-    FROM clique_bait.events AS e1
-    WHERE event_type = 1
-      AND page_id = 12
-      AND NOT EXISTS(
-        SELECT e2.visit_id
-        FROM clique_bait.events AS e2
-        WHERE e2.visit_id = e1.visit_id
-          AND e2.event_type = 3
-    )
-)
 SELECT
-    CAST((MAX(view_checkout_non_purchase) * 100.0)
-        / COUNT(DISTINCT CASE WHEN page_id = 12 THEN visit_id END)
-        AS DECIMAL(5, 2)) AS checkout_no_purchase
-FROM clique_bait.events
-CROSS JOIN cte;
+    before_sales,
+    after_sales,
+    after_sales - before_sales AS sales_difference,
+    CAST(((after_sales - before_sales) * 100.0) / before_sales AS DECIMAL(5, 2)) AS growth
+FROM before_4_weeks
+CROSS JOIN after_4_weeks;
 ```
 
 #### 📊 Result Set
 
-| Interpretation | checkout\_no\_purchase |
-| :--- | :--- |
-| 1 — % of all visits | 9.15 |
-| 2 — % of checkout visits | 15.50 |
+| before\_sales | after\_sales | sales\_difference | growth |
+| :--- | :--- | :--- | :--- |
+| 2345878357 | 2318994169 | -26884188 | -1.15 |
+
+
+---
+
+### Highlight 3 — Multi-Dimension Impact Analysis via `GROUPING SETS`
+**Question:** *Section D, Q1 — Which areas of the business have the highest negative impact in sales metrics performance in 2020 for the 12-week before and after period? Analyse by: `region`, `platform`, `age_band`, `demographic`, `customer_type`.*
+*Full script: [04_D_Bonus_Questions.sql](04_D_Bonus_Questions.sql)*
+
+**The Problem:** Running the same before/after analysis across 5 separate dimensions would typically require 5 separate queries or a `UNION ALL` block — duplicating the same aggregation logic 5 times and scanning the table 5 times. Additionally, the standard `NULL` produced by `GROUPING SETS` for non-grouped columns is ambiguous — it could mean the column wasn't part of the grouping, or it could mean the underlying data is null.
+
+**The Solution:** `GROUPING SETS` runs all 5 groupings in a single table scan. Each dimension is listed as its own set — `(region), (platform), ...` — so they remain independent rather than being combined. `GROUPING(column)` returns `1` when a column was not part of the current grouping level, allowing the ambiguous `NULL` to be replaced with `'-'` as a clear visual marker. The result is a single output table that a reviewer can immediately parse by dimension.
+
+```sql
+-- Groups sales by 5 business dimensions using GROUPING SETS for a single-scan analysis.
+-- GROUPING() replaces aggregation NULLs with '-' to distinguish them from data NULLs.
+
+WITH before_after_sales AS (
+    SELECT
+        CASE WHEN GROUPING(region) = 1 THEN '-' ELSE region END AS region,
+        CASE WHEN GROUPING(platform) = 1 THEN '-' ELSE platform END AS platform,
+        CASE WHEN GROUPING(age_band) = 1 THEN '-' ELSE age_band END AS age_band,
+        CASE WHEN GROUPING(demographic) = 1 THEN '-' ELSE demographic END AS demographic,
+        CASE WHEN GROUPING(customer_type) = 1 THEN '-' ELSE customer_type END AS customer_type,
+        SUM(CASE
+                WHEN week_number BETWEEN 12 AND 23 THEN
+                    CAST(sales AS BIGINT) END) AS before_sales,
+        SUM(CASE
+                WHEN week_number BETWEEN 24 AND 35 THEN
+                    CAST(sales AS BIGINT) END) AS after_sales
+    FROM data_mart.clean_weekly_sales
+    WHERE week_number BETWEEN 12 AND 35
+      AND calendar_year = 2020
+    GROUP BY
+        GROUPING SETS (
+        (region), (platform), (age_band), (demographic), (customer_type))
+)
+
+SELECT
+    region,
+    platform,
+    age_band,
+    demographic,
+    customer_type,
+    before_sales,
+    after_sales,
+    after_sales - before_sales AS difference,
+    CAST(((after_sales - before_sales) * 100.0) / before_sales AS DECIMAL(5, 2)) AS growth
+FROM before_after_sales;
+```
+
+<details>
+<summary><b>📊 Click to expand Result Set</b></summary>
+
+| region | platform | age\_band | demographic | customer\_type | before\_sales | after\_sales | difference | growth |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| - | - | - | - | Existing | 3690116427 | 3606243454 | -83872973 | -2.27 |
+| - | - | - | - | Guest | 2573436301 | 2496233635 | -77202666 | -3.00 |
+| - | - | - | - | New | 862720419 | 871470664 | 8750245 | 1.01 |
+| - | - | - | Couples | - | 2033589643 | 2015977285 | -17612358 | -0.87 |
+| - | - | - | Families | - | 2328329040 | 2286009025 | -42320015 | -1.82 |
+| - | - | Middle Aged | - | - | 1164847640 | 1141853348 | -22994292 | -1.97 |
+| - | - | Retirees | - | - | 2395264515 | 2365714994 | -29549521 | -1.23 |
+| - | - | unknown | - | - | 2764354464 | 2671961443 | -92393021 | -3.34 |
+| - | - | Young Adults | - | - | 801806528 | 794417968 | -7388560 | -0.92 |
+| - | Retail | - | - | - | 6906861113 | 6738777279 | -168083834 | -2.43 |
+| - | Shopify | - | - | - | 219412034 | 235170474 | 15758440 | 7.18 |
+| AFRICA | - | - | - | - | 1709537105 | 1700390294 | -9146811 | -0.54 |
+| ASIA | - | - | - | - | 1637244466 | 1583807621 | -53436845 | -3.26 |
+| CANADA | - | - | - | - | 426438454 | 418264441 | -8174013 | -1.92 |
+| EUROPE | - | - | - | - | 108886567 | 114038959 | 5152392 | 4.73 |
+| OCEANIA | - | - | - | - | 2354116790 | 2282795690 | -71321100 | -3.03 |
+| SOUTH AMERICA | - | - | - | - | 213036207 | 208452033 | -4584174 | -2.15 |
+| USA | - | - | - | - | 677013558 | 666198715 | -10814843 | -1.60 |
+
+</details>
+
+> **Key Finding:** The `unknown` demographic and age_band segments recorded the highest negative impact at -3.34%, followed by ASIA (-3.26%) and OCEANIA (-3.03%). Unidentified customers and customers in distant regions were disproportionately affected by the packaging change.
 
 ---
 
 ## ⚙️ What I Would Do Differently in Production
 
-- All three materialized tables (`product_funnel`, `category_funnel`, `campaign_summary`) use `SELECT INTO` for development convenience — in production, these would be pre-defined tables with explicit data types, constraints, and indexes, refreshed incrementally as new event data arrives
-- The campaign `BETWEEN` join assumes non-overlapping campaign windows and clean boundary dates — a production pipeline would add validation for overlapping campaigns and define whether boundary timestamps are inclusive or exclusive
+- The cleansing pipeline runs as a one-time `SELECT INTO` — in production, `clean_weekly_sales` would be a pre-defined table with explicit data types, constraints, and indexes, refreshed incrementally as new weekly data arrives rather than rebuilt from scratch
+- `BIGINT` casting is applied at query time to work around the source column being `INT` — in production the column would be defined as `BIGINT` at the schema level, eliminating the need for per-query casting
+- The before/after analysis uses a fixed baseline date — in production this would be a parameter passed into a stored procedure, making the analysis reusable for any future event date without modifying query logic
 
 ---
 

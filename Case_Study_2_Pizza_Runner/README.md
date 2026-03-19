@@ -42,8 +42,6 @@ Before any metrics could be calculated, the raw data required heavy cleansing an
 
 *Full cleaning script: [00_DataClean_DDL.sql](00_DataClean_DDL.sql)*
 
-Before writing any analytical queries, I built a pre-processing script to sanitize the raw tables and materialize them into permanent staging tables using `SELECT INTO`.
-
 | Column | Issue Found | Fix Applied |
 | :--- | :--- | :--- |
 | `exclusions`, `extras` | Literal `'null'`, `'NaN'`, and empty strings instead of `NULL` | `CASE WHEN TRIM(LOWER()) IN ('null','nan','')` → `NULL` |
@@ -94,7 +92,7 @@ WHERE r.cancellation IS NULL;
 **Question:** *Section C, Q05 — Generate an alphabetically ordered comma-separated ingredient list for each pizza order and add a `2x` in front of any relevant ingredients.*
 *Full script: [03_C_Ingredient_Optimisation.sql](03_C_Ingredient_Optimisation.sql)*
 
-**The Problem:** For each pizza order, the final ingredient list required three operations simultaneously: remove exclusions from the base recipe, add extras, and prefix any ingredient appearing in both base and extras with `2x`. This was the most complex query in the entire case study.
+**The Problem:** For each pizza order, the final ingredient list required three operations simultaneously: remove exclusions from the base recipe, add extras, and prefix any ingredient appearing in both base and extras with `2x`.
 
 **The Solution:** Instead of a deeply nested CASE WHEN chain, I decomposed the problem into 7 CTEs using set theory. Base ingredients and extras were stacked vertically with `UNION ALL` — preserving duplicates intentionally. A `COUNT = 2` detects the overlap for `2x` logic. Exclusions were filtered using a correlated `NOT IN` subquery with a `NULL` guard to prevent silent data loss.
 
